@@ -20,8 +20,10 @@
 #define POWER_CACHE_LENGTH 3
 
 // Light and heavy hit thresholds
-#define LIGHT_THRES 5000
-#define HEAVY_THRES 20000
+#define LIGHT_THRES_DON 260000
+#define HEAVY_THRES_DON 290000
+#define LIGHT_THRES_KAT 260000
+#define HEAVY_THRES_KAT 290000
 
 // Forced sampling frequency
 #define FORCED_FREQ 1000
@@ -46,7 +48,7 @@ Cache <long int, POWER_CACHE_LENGTH> powerCache [CHANNELS];
 bool triggered [CHANNELS];
 
 int pins[] = {A0, A1, A2, A3};  // L don, R don, L kat, R kat
-char lightKeys[] = {'g', 'h', 'f', 'j'};
+char lightKeys[] = {'j', 'h', 'g', 'f'};
 char heavyKeys[] = {'t', 'y', 'r', 'u'};
 
 void setup() {
@@ -73,8 +75,17 @@ void loop() {
     power [i] -= tempInt * tempInt;
     tempInt = sampleCache [i].get ();
     power [i] += tempInt * tempInt;
-    if (power [i] < LIGHT_THRES) {
-      power [i] = 0;
+
+    // Differentiate for don and kat input. 
+    if ((i == 1) || (i == 2)){ // Don path (A1 and A2)
+      if (power [i] < LIGHT_THRES_DON) {
+        power [i] = 0;
+      }
+    }
+    else { // Kat path (A0 and A3)
+      if (power [i] < LIGHT_THRES_KAT) {
+        power [i] = 0;
+      }
     }
     
     powerCache [i].put (power [i]);
@@ -85,15 +96,29 @@ void loop() {
 
     if (!triggered [i]) {
       for (short int j = 0; j < POWER_CACHE_LENGTH - 1; j++) {
-        if (powerCache [i].get (j - 1) >= powerCache [i].get (j)) {
-          break;
-        } else if (powerCache [i].get (1) >= HEAVY_THRES) {
-          triggered [i] = true;
-          Keyboard.print (heavyKeys [i]);
-        } else if (powerCache [i].get (1) >= LIGHT_THRES) {
-          triggered [i] = true;
-          Keyboard.print (lightKeys [i]);
+        if ((i == 1) || (i == 2)){ // Don path
+          if (powerCache [i].get (j - 1) >= powerCache [i].get (j)) {
+            break;
+          } else if (powerCache [i].get (1) >= HEAVY_THRES_DON) {
+            triggered [i] = true;
+            Keyboard.print (heavyKeys [i]);
+          } else if (powerCache [i].get (1) >= LIGHT_THRES_DON) {
+            triggered [i] = true;
+            Keyboard.print (lightKeys [i]);
+          }
         }
+        else { // Kat path
+          if (powerCache [i].get (j - 1) >= powerCache [i].get (j)) {
+            break;
+          } else if (powerCache [i].get (1) >= HEAVY_THRES_KAT) {
+            triggered [i] = true;
+            Keyboard.print (heavyKeys [i]);
+          } else if (powerCache [i].get (1) >= LIGHT_THRES_KAT) {
+            triggered [i] = true;
+            Keyboard.print (lightKeys [i]);
+          }
+        }
+        
       }
     }
     
