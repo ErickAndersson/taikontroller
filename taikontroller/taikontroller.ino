@@ -7,7 +7,6 @@
 *                erick.andersson98@gmail.com                   *
 *                                                              *
 ****************************************************************/
-
 // Compatibility with Taiko Jiro
 #define MODE_JIRO 1
 
@@ -20,14 +19,17 @@
 #define POWER_CACHE_LENGTH 3
 
 // Light and heavy hit thresholds
-#define LIGHT_THRES_DON 260000
-#define HEAVY_THRES_DON 290000
-#define LIGHT_THRES_KAT 260000
-#define HEAVY_THRES_KAT 290000
+
+#define LIGHT_THRES_DON 150000
+#define HEAVY_THRES_DON 500000
+
+#define LIGHT_THRES_KAT 150000
+#define HEAVY_THRES_KAT 500000
 
 // Forced sampling frequency
 #define FORCED_FREQ 1000
 
+//#include <ctime>
 #include <limits.h>
 #include <Keyboard.h>
 #include "cache.h"
@@ -36,7 +38,12 @@
 #define HEAVY_THRES LONG_MAX
 #endif
 
+const long int TIME_THRESH = 10; // In milliseconds
+
 unsigned long int lastTime;
+
+char lastHit = 'z';
+unsigned long int lastHitTimestamp;
 
 int channelSample [CHANNELS];
 int lastChannelSample [CHANNELS];
@@ -47,7 +54,7 @@ Cache <long int, POWER_CACHE_LENGTH> powerCache [CHANNELS];
 
 bool triggered [CHANNELS];
 
-int pins[] = {A0, A1, A2, A3};  // L don, R don, L kat, R kat
+int pins[] = {A0, A1, A2, A3};  // R kat, R don, L don, L kat
 char lightKeys[] = {'j', 'h', 'g', 'f'};
 char heavyKeys[] = {'t', 'y', 'r', 'u'};
 
@@ -60,7 +67,8 @@ void setup() {
     lastChannelSample [i] = 0;
     triggered [i] = false;
   }
-  lastTime = 0;
+  lastTime = millis();
+  lastHitTimestamp = millis();
 }
 
 void loop() {
@@ -75,15 +83,14 @@ void loop() {
     power [i] -= tempInt * tempInt;
     tempInt = sampleCache [i].get ();
     power [i] += tempInt * tempInt;
-
-    // Differentiate for don and kat input. 
-    if ((i == 1) || (i == 2)){ // Don path (A1 and A2)
-      if (power [i] < LIGHT_THRES_DON) {
+    
+    if ((i == 0)||(i == 3)){ //Kat
+      if (power [i] < LIGHT_THRES_KAT) {
         power [i] = 0;
       }
     }
-    else { // Kat path (A0 and A3)
-      if (power [i] < LIGHT_THRES_KAT) {
+    else { //Don
+      if (power [i] < LIGHT_THRES_DON) {
         power [i] = 0;
       }
     }
@@ -95,51 +102,71 @@ void loop() {
     }
 
     if (!triggered [i]) {
+      long int actualTime;
       for (short int j = 0; j < POWER_CACHE_LENGTH - 1; j++) {
-        if ((i == 1) || (i == 2)){ // Don path
-          if (powerCache [i].get (j - 1) >= powerCache [i].get (j)) {
-            break;
-          } else if (powerCache [i].get (1) >= HEAVY_THRES_DON) {
-            triggered [i] = true;
-            Keyboard.print (heavyKeys [i]);
-          } else if (powerCache [i].get (1) >= LIGHT_THRES_DON) {
-            triggered [i] = true;
-            Keyboard.print (lightKeys [i]);
-          }
-        }
-        else { // Kat path
+        if ((i == 0) || (i == 3)){ //Kat
           if (powerCache [i].get (j - 1) >= powerCache [i].get (j)) {
             break;
           } else if (powerCache [i].get (1) >= HEAVY_THRES_KAT) {
             triggered [i] = true;
             Keyboard.print (heavyKeys [i]);
           } else if (powerCache [i].get (1) >= LIGHT_THRES_KAT) {
-            triggered [i] = true;
-            Keyboard.print (lightKeys [i]);
+            actualTime = millis(); // get the actual time
+
+            if (lastHit != lightKeys[i]){ // look for the time of the last hit
+              // if the time between the last and current hit is bigger than a given time, accept it.
+              if (actualTime-lastHitTimestamp > TIME_THRESH){
+                triggered [i] = true;
+                Keyboard.print (lightKeys [i]);
+                lastHit = lightKeys[i];    
+              }
+              // otherwise, drop the input.
+            }
           }
         }
-        
+        else { //Don
+          if (powerCache [i].get (j - 1) >= powerCache [i].get (j)) {
+            break;
+          } else if (powerCache [i].get (1) >= HEAVY_THRES_DON) {
+            triggered [i] = true;
+            Keyboard.print (heavyKeys [i]);
+          } else if (powerCache [i].get (1) >= LIGHT_THRES_DON) {
+            actualTime = millis(); // get the actual time
+
+            if (lastHit != lightKeys[i]){ // look for the time of the last hit
+              // if the time between the last and current hit is bigger than a given time, accept it.
+              if (actualTime-lastHitTimestamp > TIME_THRESH){
+                triggered [i] = true;
+                Keyboard.print (lightKeys [i]);
+                lastHit = lightKeys[i];    
+              }
+              // otherwise, drop the input.
+            }
+          }
+        }
+
+        lastHitTimestamp = actualTime; 
       }
     }
     
-#if MODE_DEBUG
-    Serial.print (power [i]);
-    Serial.print ("\t");
-#endif
+    #if MODE_DEBUG
+        Serial.print (power [i]);
+        Serial.print ("\t");
+    #endif
 
-// End of each channel
+  // End of each channel
   }
 
-#if MODE_DEBUG
-  Serial.print (50000);
-  Serial.print ("\t");
-  Serial.print (0);
-  Serial.print ("\t");
+  #if MODE_DEBUG
+    Serial.print (50000);
+    Serial.print ("\t");
+    Serial.print (0);
+    Serial.print ("\t");
 
-  Serial.println ("");
-#endif
+    Serial.println ("");
+  #endif
 
-// Force the sample frequency to be less than 1000Hz
+  // Force the sample frequency to be less than 1000Hz
   unsigned int frameTime = micros () - lastTime;
   lastTime = micros ();
   if (frameTime < FORCED_FREQ) {
